@@ -21,10 +21,18 @@ session = InteractiveSession(config=config)
 
 
 def parser():
+    """
+    Returns the command line args parser.
+
+    Returns
+    -------
+    parser : ArgumentParser
+        The command line args parser.
+    """
     arg_parser = ArgumentParser()
     arg_parser.add_argument('--dict', required=True)
-    arg_parser.add_argument('--data', required=True)
-    arg_parser.add_argument('--split', type=int, default=5000)
+    arg_parser.add_argument('--train', required=True)
+    arg_parser.add_argument('--test', required=True)
 
     arg_parser.add_argument('--num-paths', type=int, default=100)
     arg_parser.add_argument('--num-tokens', type=int, default=10)
@@ -44,6 +52,24 @@ def parser():
 
 
 def train_step(X, y, model, optimizer, train_loss, train_accuracy):
+    """
+    Trains the model for one batch.
+
+    Parameters
+    ----------
+    X : tensor
+        The features
+    y : tensor
+        The targets
+    model : tf.model.Model
+        The model
+    optimizer : tf.keras.optimizers
+        The optimizer
+    train_loss : tf.Variable
+        The variable keeping track of the training loss
+    train_accuracy : tf.Variable
+        The variable keeping track of the training accuracy
+    """
     y_inp = y[:, :-1]
     y_real = y[:, 1:]
 
@@ -61,6 +87,22 @@ def train_step(X, y, model, optimizer, train_loss, train_accuracy):
 
 
 def test_step(X, y, model, test_loss, test_accuracy):
+    """
+    Evaluates the model for one batch.
+
+    Parameters
+    ----------
+    X : tensor
+        The features
+    y : tensor
+        The targets
+    model : tf.model.Model
+        The model
+    test_loss : tf.Variable
+        The variable keeping track of the testing loss
+    test_accuracy : tf.Variable
+        The variable keeping track of the testing accuracy
+    """
     y_inp = y[:, :-1]
     y_real = y[:, 1:]
 
@@ -88,19 +130,26 @@ def main():
     target_table = vocabulary.to_table(tar2idx, tar2idx[vocabulary.UNK])
 
     # Dataset
-    print('Loading data from {}'.format(args.data))
-    dst = dataset.create(
-        args.data,
+    print('Loading train data from {}'.format(args.train))
+    train = dataset.create(
+        args.train,
         args.num_paths,
         args.num_tokens,
         args.num_targets,
         token_table,
         path_table,
         target_table
-    )
+    ).shuffle(10000, seed=args.seed, reshuffle_each_iteration=True).batch(args.batch_size)
 
-    train_dst = dst.skip(args.split).shuffle(10000, seed=args.seed, reshuffle_each_iteration=True).batch(args.batch_size)
-    test_dst = dst.take(args.split).batch(args.batch_size)
+    test = dataset.create(
+        args.test,
+        args.num_paths,
+        args.num_tokens,
+        args.num_targets,
+        token_table,
+        path_table,
+        target_table
+    ).batch(args.batch_size)
 
     # Model
     print('Creating model')
@@ -129,9 +178,9 @@ def main():
     ckpt = tf.train.Checkpoint(model=model, optimizer=optimizer)
     ckpt_manager = tf.train.CheckpointManager(ckpt, checkpoint_path, max_to_keep=5)
 
-    # if ckpt_manager.latest_checkpoint:
-    #     ckpt.restore(ckpt_manager.latest_checkpoint)
-    #     print('Latest checkpoint restored!')
+    if ckpt_manager.latest_checkpoint:
+        ckpt.restore(ckpt_manager.latest_checkpoint)
+        print('Latest checkpoint restored!')
 
     # Logs
     train_log_dir = './logs/train'
@@ -155,12 +204,12 @@ def main():
         tf.TensorSpec(shape=(None, args.num_targets), dtype=tf.int32)
     ]
 
-    train_batch = tf.function(
+    train_on_batch = tf.function(
         partial(train_step, model=model, optimizer=optimizer, train_loss=train_loss, train_accuracy=train_accuracy),
         input_signature=signature
     )
 
-    test_batch = tf.function(
+    test_on_batch = tf.function(
         partial(test_step, model=model, test_loss=test_loss, test_accuracy=test_accuracy),
         input_signature=signature
     )
@@ -174,25 +223,25 @@ def main():
         test_loss.reset_states()
         test_accuracy.reset_states()
 
-        for (X_train, y_train) in train_dst:
-            train_batch(X_train, y_train)
+        for (X_train, y_train) in train:
+            train_on_batch(X_train, y_train)
 
         with train_summary_writer.as_default():
             tf.summary.scalar('loss', train_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', train_accuracy.result(), step=epoch)
-            
-        for (X_test, y_test) in test_dst:
-            test_batch(X_test, y_test)
-            
+
+        for (X_test, y_test) in test:
+            test_on_batch(X_test, y_test)
+
         with test_summary_writer.as_default():
             tf.summary.scalar('loss', test_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', test_accuracy.result(), step=epoch)
 
         if (epoch + 1) % 10 == 0:
             ckpt_save_path = ckpt_manager.save()
-            
+
             print('Saving checkpoint for epoch {} at {}'.format(epoch + 1, ckpt_save_path))
-        
+
         print(
             'Epoch {} Loss {:.4f} Accuracy {:.4f} Validation Loss {:.4f} Validation Accuracy {:.4f}'.format(
                 epoch + 1,
@@ -202,7 +251,7 @@ def main():
                 test_accuracy.result()
             )
         )
-        
+
         print('Time taken for 1 epoch: {} secs\n'.format(time.time() - start))
 
 

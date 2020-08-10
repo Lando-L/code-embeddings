@@ -9,3 +9,4 @@ WORKDIR /code-embeddings
 RUN pip install -r requirements.txt
 
 COPY ./src /code-embeddings/src
+COPY ./examples /code-embeddings/examples
