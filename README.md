@@ -9,7 +9,7 @@ Documentation plays an important role in the process of software development. It
 The aim of this project is to improve the experience of developers with poorly documented code, when reaching out to the original authors is not an option.
 
 ## Quick Start
-The best way to get an overview of what this project is about, is to open the quick-start notebook and follow the step-by-step example run through.
+A good starting point to get an overview of what this project is about, is to go through the quickstart [notebook](https://github.com/Lando-L/code-embeddings/blob/develop/src/quickstart.ipynb).
 
 ## Setup
 If you want to train and evaluate the model yourself, you can find more information about the project's structure and a training and evaluation guide in the [wiki](https://github.com/Lando-L/code-embeddings/wiki).
